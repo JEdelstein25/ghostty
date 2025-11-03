@@ -288,6 +288,8 @@ const DerivedConfig = struct {
     title_report: bool,
     links: []Link,
     link_previews: configpkg.LinkPreviews,
+    @"link-file-paths": bool,
+    @"link-file-command": ?[]const u8,
     scroll_to_bottom: configpkg.Config.ScrollToBottom,
     notify_on_command_finish: configpkg.Config.NotifyOnCommandFinish,
     notify_on_command_finish_action: configpkg.Config.NotifyOnCommandFinishAction,
@@ -362,6 +364,8 @@ const DerivedConfig = struct {
             .title_report = config.@"title-report",
             .links = links,
             .link_previews = config.@"link-previews",
+            .@"link-file-paths" = config.@"link-file-paths",
+            .@"link-file-command" = config.@"link-file-command",
             .scroll_to_bottom = config.@"scroll-to-bottom",
             .notify_on_command_finish = config.@"notify-on-command-finish",
             .notify_on_command_finish_action = config.@"notify-on-command-finish-action",
@@ -4044,6 +4048,39 @@ fn processLinks(self: *Surface, pos: apprt.CursorPos) !bool {
                 .trim = false,
             });
             defer self.alloc.free(str);
+            
+            // Check if this is a file path with optional line:column
+            if (self.config.@"link-file-paths") {
+                const file_path = @import("os/file_path.zig");
+                if (try file_path.parseFilePath(self.alloc, str)) |parsed| {
+                    defer parsed.deinit(self.alloc);
+                    
+                    // Validate and resolve to absolute path
+                    const working_dir = self.io.terminal.getPwd();
+                    if (try file_path.validateAndResolve(self.alloc, parsed, working_dir)) |validated| {
+                        defer validated.deinit(self.alloc);
+                        
+                        // Use custom editor command if configured
+                        if (self.config.@"link-file-command") |cmd_template| {
+                            const cmd = try self.formatFileCommand(
+                                cmd_template,
+                                validated,
+                            );
+                            defer self.alloc.free(cmd);
+                            
+                            // Execute custom command
+                            try self.executeFileCommand(cmd);
+                            return true;
+                        }
+                        
+                        // Fall back to system default
+                        try self.openUrl(.{ .kind = .text, .url = validated.path });
+                        return true;
+                    }
+                }
+            }
+            
+            // Not a valid file path, treat as regular URL
             try self.openUrl(.{ .kind = .unknown, .url = str });
         },
 
@@ -4079,6 +4116,77 @@ fn openUrl(
         action.kind,
         action.url,
     );
+}
+
+/// Format a file command template with placeholders
+fn formatFileCommand(
+    self: *Surface,
+    template: []const u8,
+    file_loc: @import("os/file_path.zig").FileLocation,
+) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(self.alloc);
+    
+    var i: usize = 0;
+    while (i < template.len) {
+        if (template[i] == '{') {
+            // Find closing brace
+            const end = std.mem.indexOfScalarPos(u8, template, i, '}') orelse {
+                try result.append(self.alloc, template[i]);
+                i += 1;
+                continue;
+            };
+            
+            const placeholder = template[i + 1 .. end];
+            if (std.mem.eql(u8, placeholder, "file")) {
+                try result.appendSlice(self.alloc, file_loc.path);
+            } else if (std.mem.eql(u8, placeholder, "line")) {
+                if (file_loc.line) |line| {
+                    try std.fmt.format(result.writer(self.alloc), "{d}", .{line});
+                }
+            } else if (std.mem.eql(u8, placeholder, "column")) {
+                if (file_loc.column) |column| {
+                    try std.fmt.format(result.writer(self.alloc), "{d}", .{column});
+                }
+            } else {
+                // Unknown placeholder, keep as-is
+                try result.appendSlice(self.alloc, template[i .. end + 1]);
+            }
+            
+            i = end + 1;
+        } else {
+            try result.append(self.alloc, template[i]);
+            i += 1;
+        }
+    }
+    
+    return result.toOwnedSlice(self.alloc);
+}
+
+/// Execute a custom file command
+fn executeFileCommand(
+    self: *Surface,
+    cmd: []const u8,
+) !void {
+    // Parse command into args (simple split on spaces for now)
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(self.alloc);
+    
+    var iter = std.mem.tokenizeScalar(u8, cmd, ' ');
+    while (iter.next()) |arg| {
+        try args.append(self.alloc, arg);
+    }
+    
+    if (args.items.len == 0) return error.EmptyCommand;
+    
+    // Execute the command
+    var child = std.process.Child.init(args.items, self.alloc);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+    
+    try child.spawn();
+    _ = try child.wait();
 }
 
 /// Return the URI for an OSC8 hyperlink at the given position or null
