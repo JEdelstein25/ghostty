@@ -26,7 +26,7 @@ pub const regex =
     "(?:" ++ url_schemes ++
     \\)(?:
     ++ ipv6_url_pattern ++
-    \\|[\w\-.~:/?#@!$&*+,;=%]+(?:[\(\[]\w*[\)\]])?)+(?<![,.])|(?:\.\.\/|\.\/|\/)[\w\-.~:\/?#@!$&*+,;=%]+(?:\/[\w\-.~:\/?#@!$&*+,;=%]*)*
+    \\|[\w\-.~:/?#@!$&*+,;=%]+(?:[\(\[]\w*[\)\]])?)+(?<![,.])|(?:\.\.\/|\.\/|\/)[\w\-.~:\/?#@!$&*+,;=%]+(?:\/[\w\-.~:\/?#@!$&*+,;=%]*)*|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+\.[A-Za-z0-9]+(?::[0-9]+)?(?::[0-9]+)?
     ;
 const url_schemes =
     \\https?://|mailto:|ftp://|file:|ssh:|git://|ssh://|tel:|magnet:|ipfs://|ipns://|gemini://|gopher://|news:
@@ -203,6 +203,57 @@ test "url regex" {
         .{
             .input = "[link](/home/user/ghostty.user/example)",
             .expect = "/home/user/ghostty.user/example",
+        },
+        // File paths with line numbers
+        .{
+            .input = "Error in ./src/main.zig:47",
+            .expect = "./src/main.zig:47",
+        },
+        .{
+            .input = "  at ../lib/parser.zig:123:45",
+            .expect = "../lib/parser.zig:123:45",
+        },
+        .{
+            .input = "/home/user/app.ts:100:5 has error",
+            .expect = "/home/user/app.ts:100:5",
+        },
+        // Bare relative paths (without ./ or ../)
+        .{
+            .input = "src/main.zig",
+            .expect = "src/main.zig",
+        },
+        .{
+            .input = "Error in src/main.zig:47",
+            .expect = "src/main.zig:47",
+        },
+        .{
+            .input = "  at app/models/user.rb:123:45",
+            .expect = "app/models/user.rb:123:45",
+        },
+        // Multi-level bare paths (Zig compiler errors)
+        .{
+            .input = "src/build/zig.zig:13:9: error: version mismatch",
+            .expect = "src/build/zig.zig:13:9",
+        },
+        .{
+            .input = "app/controllers/admin/users_controller.rb:42",
+            .expect = "app/controllers/admin/users_controller.rb:42",
+        },
+        // False positives - should NOT match (no file extension)
+        .{
+            .input = "should be underlined/highlighted",
+            .expect = "https://",
+            .num_matches = 0,
+        },
+        .{
+            .input = "NOT/be clickable",
+            .expect = "",
+            .num_matches = 0,
+        },
+        .{
+            .input = "and/or something",
+            .expect = "",
+            .num_matches = 0,
         },
         // IPv6 URL tests - Basic tests
         .{

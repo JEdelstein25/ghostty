@@ -1264,6 +1264,48 @@ link: RepeatableLink = .{},
 /// Available since: 1.2.0
 @"link-previews": LinkPreviews = .true,
 
+/// Enable file path detection and validation. When enabled, file paths in
+/// terminal output are validated against the filesystem before being made
+/// clickable. Only paths that exist will be highlighted as links.
+///
+/// This applies to paths like:
+///   - `./src/main.zig`
+///   - `src/main.zig:47` (with line number)
+///   - `../lib/parser.zig:123:45` (with line and column)
+///
+/// When disabled, all text matching file path patterns will be clickable
+/// without validation.
+@"link-file-paths": bool = true,
+
+/// Custom command for opening file paths. This allows you to specify
+/// which editor to use and how to pass line and column information.
+///
+/// Placeholders:
+///   - `{file}` - The absolute path to the file
+///   - `{line}` - The line number (if present)
+///   - `{column}` - The column number (if present)
+///
+/// Common Editors:
+///   - VS Code: `code --goto {file}:{line}:{column}`
+///   - Cursor: `cursor --goto {file}:{line}:{column}`
+///   - Sublime Text: `subl {file}:{line}:{column}`
+///   - Vim (in new window): `vim +{line} {file}`
+///   - Neovim (in new terminal): `nvim +{line} {file}`
+///   - Emacs: `emacs +{line}:{column} {file}`
+///   - IntelliJ IDEA: `idea --line {line} {file}`
+///   - TextMate: `mate -l {line} {file}`
+///   - BBEdit: `bbedit +{line} {file}`
+///   - TextEdit (macOS): `open -a TextEdit {file}`
+///
+/// macOS Default Text Editor:
+///   - Use system default: `open -t {file}` (don't set this config)
+///   - Change system default: Right-click a .txt file → Get Info → 
+///     Open with → Choose app → Change All
+///
+/// If not set, files are opened with the system default application
+/// (on macOS: TextEdit, on Linux: xdg-open).
+@"link-file-command": ?[]const u8 = null,
+
 /// Whether to start the window in a maximized state. This setting applies
 /// to new windows and does not apply to tabs, splits, etc. However, this setting
 /// will apply to all new windows, not just the first one.
