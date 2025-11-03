@@ -1295,6 +1295,7 @@ link: RepeatableLink = .{},
 ///   - IntelliJ IDEA: `idea --line {line} {file}`
 ///   - TextMate: `mate -l {line} {file}`
 ///   - BBEdit: `bbedit +{line} {file}`
+///   - TextEdit (macOS): `open -a TextEdit {file}`
 ///
 /// macOS Default Text Editor:
 ///   - Use system default: `open -t {file}` (don't set this config)
